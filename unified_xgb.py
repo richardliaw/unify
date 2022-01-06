@@ -14,8 +14,7 @@ def create_dataset():
 
 
 def main(mode):
-    raytrainer = create_trainer(
-        backend="xgboost",
+    raytrainer = XGBoostTrainer(,
         args=[
             {"objective": "binary:logistic", "eval_metric": ["logloss", "error"],},
         ],
@@ -26,7 +25,7 @@ def main(mode):
             # ray_params=RayParams(
             #     num_actors=2, cpus_per_actor=1
             # ),  # Number of remote actors
-            callbacks=callback,
+            # callbacks=callback,
         ),
         num_workers=10,
         num_gpus=20,
