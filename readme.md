@@ -7,18 +7,20 @@ In this repository, we prototype an end-to-end framework / API for Ray ML -- dat
 ## Data preprocessing
 ```python
 import ray
+from ray.train.preprocessors import Scaler
 
 ds = ray.data.read_parquet("...")
 
 trainset, testset = ray.data.train_test_split(ds, percentage=0.2)
 
-pipeline = ray.train.Preprocessor(
-    stages=[
-    ("vectorizer", Vectorizer()), 
-    ("onehot", OneHotEncoding())]
-)
+with ray.dag.builder() as data_in:
+    s1 = Scaler.remote(data_in, "col_1")
+    d1 = s1.transform.remote(data_in)
+    s2 = Scaler.remote(d1, "col_2")
+    prep_dag = s2.transform.remote(d1)
 
-pipeline = pipeline.fit(trainset)  # updates the stateful parameters
+
+pipeline = prep_dag.call(trainset)  # updates the stateful parameters
 pipeline.save("file.json")
 ```
 
@@ -26,27 +28,25 @@ pipeline.save("file.json")
 
 ```python
 raytrainer = train.XGBoostTrainer(
-    args=[
-        {"objective": "binary:logistic", "eval_metric": ["logloss", "error"],},
-    ],
-    kwargs=dict(verbose_eval=False),
-    num_workers=10,  # Consider making this a second level set of arguments (RayParams)
-    use_gpu=True,
+    {"objective": "binary:logistic", "eval_metric": ["logloss", "error"],},
+    verbose_eval=False,
+    ray_config=dict(
+        num_workers=10,
+        use_gpu=True
+    )
 )
 
 # Note: We don't need to assume that user always want to split into train/test.
 # Similarly, perhaps consider a X, y interface.
 
-results = train.fit(  # should also consider trainer.fit, given feedback
-    raytrainer, 
-    pipeline, 
+results = raytrainer.fit( 
+    data_pipeline=pipeline, 
     train_dataset=trainset, 
     test_dataset=testset,
     target_columns=["labels"],
-    callbacks=...)
+    **tune_config)
+
 model: XGBoost = raytrainer.fitted_model
-model: nn.Module = raytrainer.fitted_model
-model: svensFavorite = raytrainer.fitted_model
 ```
 
 ## Hyperparameter tuning
